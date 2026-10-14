@@ -108,33 +108,6 @@ class UserPasswordUpdate(SQLModel):
     )
 
 
-class MessageResponse(SQLModel):
-    """通用操作结果消息。"""
-
-    message: str = Field(
-        default=...,
-        title="提示消息",
-        description="人类可读的操作结果描述",
-        examples=["操作成功"],
-    )
-
-
-class AvatarResponse(SQLModel):
-    """头像上传成功后的响应。"""
-
-    success: bool = Field(
-        default=True,
-        title="是否成功",
-        description="固定为 true，失败时接口会返回 HTTP 错误码而非此结构",
-    )
-    avatar_url: str = Field(
-        default=...,
-        title="头像链接",
-        description="上传成功后生成的可访问 URL",
-        examples=["https://cdn.example.com/avatars/paul_dev_20261012.webp"],
-    )
-
-
 class AdminPasswordReset(SQLModel):
     """管理员强制重置指定用户密码，无需提供旧密码。"""
 
@@ -172,6 +145,33 @@ class UserLogin(SQLModel):
 # ═══════════════════════════════════════════════════
 # 响应体（Response）
 # ═══════════════════════════════════════════════════
+
+class MessageResponse(SQLModel):
+    """通用操作结果消息。"""
+
+    message: str = Field(
+        default=...,
+        title="提示消息",
+        description="人类可读的操作结果描述",
+        examples=["操作成功"],
+    )
+
+
+class AvatarResponse(SQLModel):
+    """头像上传成功后的响应。"""
+
+    success: bool = Field(
+        default=True,
+        title="是否成功",
+        description="固定为 true，失败时接口会返回 HTTP 错误码而非此结构",
+    )
+    avatar_url: str = Field(
+        default=...,
+        title="头像链接",
+        description="上传成功后生成的可访问 URL",
+        examples=["https://cdn.example.com/avatars/paul_dev_20261012.webp"],
+    )
+
 
 class UserPublic(UserBase):
     """对外暴露的用户公开信息，已过滤敏感字段。可直接作为 response_model 使用。"""
@@ -240,21 +240,3 @@ class TokenResponse(SQLModel):
         description="固定为 bearer，遵循 OAuth 2.0 规范",
         examples=["bearer"],
     )
-
-
-# ═══════════════════════════════════════════════════
-# 导出
-# ═══════════════════════════════════════════════════
-
-__all__ = [
-    "UserBase",
-    "UserCreate",
-    "UserUpdate",
-    "UserPasswordUpdate",
-    "MessageResponse",
-    "AvatarResponse",
-    "AdminPasswordReset",
-    "UserLogin",
-    "UserPublic",
-    "TokenResponse",
-]
