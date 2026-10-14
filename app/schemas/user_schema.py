@@ -53,7 +53,12 @@ class UserCreate(UserBase):
 
 
 class UserUpdate(SQLModel):
-    """PATCH 式局部更新，所有字段均为可选。未传递的字段不会被修改。"""
+    """
+    【普通用户】PATCH 式局部更新个人资料。
+    ✅ 仅包含用户自身可修改的非敏感字段。
+    ❌ 不含 is_active / is_superuser（管理员专属）
+    ❌ 不含 password（走独立的 UserPasswordUpdate + 旧密码验证）
+    """
 
     username: str | None = Field(
         default=None,
@@ -76,6 +81,35 @@ class UserUpdate(SQLModel):
         title="真实姓名",
         examples=["Paul New Chen"],
     )
+
+
+class AdminUserUpdate(SQLModel):
+    """
+    【管理员】PATCH 式管理任意用户。
+    在 UserUpdate 基础上增加权限控制字段和密码强制重置能力。
+    """
+
+    username: str | None = Field(
+        default=None,
+        min_length=3,
+        max_length=50,
+        title="用户名",
+        description="新的唯一用户名",
+        examples=["paul_new"],
+        pattern=r"^[a-zA-Z0-9_]+$",
+    )
+    email: EmailStr | None = Field(
+        default=None,
+        title="电子邮箱",
+        description="新的邮箱地址",
+        examples=["new_paul@example.com"],
+    )
+    full_name: str | None = Field(
+        default=None,
+        max_length=100,
+        title="真实姓名",
+        examples=["Paul New Chen"],
+    )
     is_active: bool | None = Field(
         default=None,
         title="账号状态",
@@ -85,6 +119,14 @@ class UserUpdate(SQLModel):
         default=None,
         title="超级管理员权限",
         description="授予或撤销系统最高权限，请谨慎操作",
+    )
+    password: str | None = Field(
+        default=None,
+        min_length=8,
+        max_length=128,
+        title="新密码",
+        description="管理员强制设置的新密码（无需旧密码），留空则不修改",
+        examples=["AdminR3s3t!2026"],
     )
 
 
@@ -182,6 +224,11 @@ class UserPublic(UserBase):
         description="数据库自增主键",
         examples=[1],
     )
+    full_name: str | None = Field(          # ← 新增：原 UserCreate 有但响应体缺失
+        default=None,
+        title="真实姓名",
+        examples=["Paul Chen"],
+    )
     is_active: bool = Field(
         default=...,
         title="账号状态",
@@ -215,6 +262,7 @@ class UserPublic(UserBase):
                     "id": 1,
                     "username": "paul_dev",
                     "email": "paul@example.com",
+                    "full_name": "Paul Chen",
                     "is_active": True,
                     "is_superuser": False,
                     "created_at": "2026-10-12T21:30:00+08:00",
