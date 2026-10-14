@@ -17,7 +17,7 @@ def hash_password(password: str) -> str:
         raise ValueError("Password must be at least 8 charactors")
     return ph.hash(password)
 
-def verity_password(plain_password: str, hash_password: str) -> bool:
+def verify_password(plain_password: str, hash_password: str) -> bool:
     """验证明文密码是否匹配 Argon2 哈希。"""
     if not plain_password or not hash_password:
         return False
@@ -27,7 +27,7 @@ def verity_password(plain_password: str, hash_password: str) -> bool:
     except (VerifyMismatchError, InvalidHash):
         return False
 
-def verity_dummy_password(plain_password: str) -> None:
+def verify_dummy_password(plain_password: str) -> None:
     """对不存在的用户执行等价耗时的密码验证，防止时序攻击猜解用户名。"""
     try:
         ph.verify(_DUMMY_HASH, plain_password)
