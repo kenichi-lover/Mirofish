@@ -1,3 +1,21 @@
+"""
+认证与权限依赖模块 (Authentication & Authorization Dependencies)
+
+本模块提供 FastAPI 路由层所需的认证与权限校验依赖项，支持 API 强制认证、
+SSR 页面可选认证以及管理员权限校验。所有依赖均为无状态函数，通过 FastAPI
+的 Depends 机制注入。
+
+主要依赖项:
+    - get_current_user: 强制认证（适用于 API 路由，失败抛出 401）
+    - resolve_user_from_cookie: 可选认证（适用于 SSR/Jinja2 页面，失败静默返回 None）
+    - require_superuser: 管理员权限校验（失败抛出 403）
+
+类型别名 (Type Aliases):
+    - CurrentUser: 强制认证用户类型别名，消除路由层样板代码
+    - OptionalUser: 可选认证用户类型别名
+    - SuperUser: 管理员用户类型别名
+"""
+
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, status
