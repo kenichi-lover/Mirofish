@@ -5,7 +5,7 @@ from argon2.exceptions import VerifyMismatchError, InvalidHash
 ph = PasswordHasher()
 
 # ⭐ 时序攻击防护：预计算一个虚拟哈希，确保用户不存在时验证耗时与正常验证一致
-_DUMMY_HASH: str = ph.hash("dummy-password-for-timing-attack")
+DUMMY_HASH: str = ph.hash("dummy-password-for-timing-attack")
 
 def hash_password(password: str) -> str:
     """对明文密码进行 Argon2id 哈希。
@@ -30,7 +30,7 @@ def verify_password(plain_password: str, hash_password: str) -> bool:
 def verify_dummy_password(plain_password: str) -> None:
     """对不存在的用户执行等价耗时的密码验证，防止时序攻击猜解用户名。"""
     try:
-        ph.verify(_DUMMY_HASH, plain_password)
+        ph.verify(DUMMY_HASH, plain_password)
     except (VerifyMismatchError, InvalidHash):
         pass # 必定失败，目的只是消耗等量时间
 
