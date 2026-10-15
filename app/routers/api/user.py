@@ -3,17 +3,23 @@
 已登录用户对自身资料的管理接口。业务逻辑在 services/user_service.py，
 本文件只做请求编排：调 Service → 翻译 ValueError → 组装响应。
 
-与 routers/api/auth.py 的分工：
-- auth.py     管身份的进出（注册/登录/登出，无 CurrentUser）
-- user.py     管登录后的自我操作（改资料/改密码/注销，必须 CurrentUser）
+与相邻路由的分工：
+- auth.py       管身份的进出（注册/登录/登出，无 CurrentUser）
+- user.py       管登录后的自我操作（改资料/改密码/注销，必须 CurrentUser）
 - user_admin.py 管对别人的操作（管理员治理，必须 SuperUser）
+
+错误状态码约定：
+- 资源状态冲突（用户名/邮箱被占用、最后超管保护）→ 409
+- 用户输入问题（密码不正确）→ 400
 """
 
 from fastapi import APIRouter, HTTPException, Response, status
 
-from ...dependencies import CurrentUser, DbSession
+from ...dependencies import DbSession
+from ...dependencies.auth import CurrentUser
 from ...models.user import User
 from ...schemas.user_schema import (
+    DeleteAccountRequest,
     PasswordChangeRequest,
     UserRead,
     UserUpdate,
@@ -22,6 +28,20 @@ from ...services.user_service import UserService
 from ...utils.auth import clear_auth_cookie
 
 router: APIRouter = APIRouter(prefix="/users", tags=["users"])
+
+# 服务层保护类错误的关键词 → 409；其余（如密码错误）→ 400
+_PROTECTED_KEYWORDS = ("超级管理员", "不能禁用或删除自己")
+
+
+def _status_for_value_error(exc: ValueError) -> int:
+    """按错误语义分流状态码：保护类规则 409，输入类问题 400。
+
+    服务层统一抛 ValueError，此处按内容细分。
+    """
+    message = str(exc)
+    if any(keyword in message for keyword in _PROTECTED_KEYWORDS):
+        return status.HTTP_409_CONFLICT
+    return status.HTTP_400_BAD_REQUEST
 
 
 # ──────────────── 查询 ────────────────
@@ -44,14 +64,14 @@ async def update_me(
     current_user: CurrentUser,
     session: DbSession,
 ) -> User:
-    """修改自己的资料（用户名/邮箱/姓名）。用户名或邮箱冲突返回 409。"""
+    """修改自己的资料（用户名/邮箱/姓名）。冲突返回 409。"""
     try:
         user = await UserService(session).update_profile(current_user, data)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
-        )
+        ) from exc
     return user
 
 
@@ -69,6 +89,7 @@ async def change_password(
 
     改密成功后清除认证 Cookie，强制用新密码重新登录
     （无状态 JWT 无法作废已签发 token，清 Cookie 是当下最有效的失效手段）。
+    旧密码错误属用户输入问题，返回 400。
     """
     try:
         await UserService(session).change_password(
@@ -78,7 +99,8 @@ async def change_password(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
-        )
+        ) from exc
+
     clear_auth_cookie(response)
     return {"message": "Password updated, please login again"}
 
@@ -95,16 +117,18 @@ async def delete_me(
 ) -> dict[str, str]:
     """注销自己的账号：高危操作，必须验证登录密码确认是本人。
 
-    账号被禁用并匿名化后，后续请求因 `_get_user_from_token`
-    查不到有效用户而自然 401，无需额外拉黑 token。
+    Service 侧执行软删除（禁用 + PII 匿名化），保留外键完整性；
+    匿名化后凭据与标识均失效，后续请求在认证依赖处自然 401。
+    最后一个可用超管不允许注销自己，返回 409。
     """
     try:
         await UserService(session).delete_account(current_user, data.password)
     except ValueError as exc:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=_status_for_value_error(exc),
             detail=str(exc),
-        )
+        ) from exc
+
     clear_auth_cookie(response)
     return {"message": "Account deleted"}
 

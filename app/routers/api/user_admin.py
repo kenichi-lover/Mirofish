@@ -6,12 +6,15 @@
 业务逻辑在 services/admin_service.py，本文件只做请求编排：
 调 Service → 翻译 ValueError → 组装响应。
 
-与 routers/api/user.py 的分工：
+与相邻路由的分工：
 - user.py       用户操作自己（CurrentUser）
 - user_admin.py 管理员操作任意用户（SuperUser）
+
+错误状态码约定：Service 抛出的 ValueError（用户名/邮箱冲突、
+最后一个超管保护、禁用/删除自己）统一映射为 409。
 """
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 
 from ...dependencies import DbSession, SuperUser
 from ...models.user import User
@@ -25,6 +28,20 @@ from ...services.admin_service import AdminService
 router: APIRouter = APIRouter(prefix="/admin/users", tags=["admin"])
 
 
+# ──────────────── 内部辅助 ────────────────
+
+
+async def _get_user_or_404(service: AdminService, user_id: int) -> User:
+    """按 ID 取用户，不存在则抛 404。收敛原先重复 5 次的查询+判空样板。"""
+    target = await service.get_user(user_id)
+    if target is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+    return target
+
+
 # ──────────────── 查询 ────────────────
 
 
@@ -32,11 +49,14 @@ router: APIRouter = APIRouter(prefix="/admin/users", tags=["admin"])
 async def list_users(
     operator: SuperUser,
     session: DbSession,
-    skip: int = 0,
-    limit: int = 20,
+    skip: int = Query(0, ge=0, description="偏移量"),
+    limit: int = Query(20, ge=1, le=100, description="每页数量，上限 100"),
 ) -> list[User]:
-    """分页返回全部用户。limit 上限 100，防止一次拉爆。"""
-    limit = min(limit, 100)
+    """分页返回全部用户。
+
+    参数越界由 Query 校验直接返回 422，不做静默修正——
+    让调用方明确知道参数不合法。
+    """
     users, _total = await AdminService(session).get_list(skip=skip, limit=limit)
     return users
 
@@ -47,13 +67,7 @@ async def get_user(
     operator: SuperUser,
     session: DbSession,
 ) -> User:
-    target = await AdminService(session).get_user(user_id)
-    if target is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-        )
-    return target
+    return await _get_user_or_404(AdminService(session), user_id)
 
 
 # ──────────────── 创建 ────────────────
@@ -82,7 +96,7 @@ async def create_user(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
-        )
+        ) from exc
     return user
 
 
@@ -98,21 +112,18 @@ async def update_user(
 ) -> User:
     """修改任意用户资料，含权限字段（is_active / is_superuser）与密码重置。
 
-    涉及权限字段变更时，Service 内部做"最后一个超管"保护校验。
+    "收回权限"方向（禁用/降权）的最后一个超管保护由 Service 在
+    变更落库前校验，违规返回 409。
     """
-    target = await AdminService(session).get_user(user_id)
-    if target is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-        )
+    service = AdminService(session)
+    target = await _get_user_or_404(service, user_id)
     try:
-        user = await AdminService(session).update_user(target, data, operator)
+        user = await service.update_user(target, data, operator)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
-        )
+        ) from exc
     return user
 
 
@@ -126,20 +137,16 @@ async def deactivate_user(
     session: DbSession,
 ) -> dict[str, str]:
     """禁用后该用户所有请求在认证依赖处 401（is_active=False 被拦截）。"""
-    target = await AdminService(session).get_user(user_id)
-    if target is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-        )
+    service = AdminService(session)
+    target = await _get_user_or_404(service, user_id)
     try:
-        await AdminService(session).deactivate_user(target, operator)
+        await service.deactivate_user(target, operator)
     except ValueError as exc:
-        # 不能禁用自己 / 不能禁用最后一个可用超管
+        # 不能禁用自己 / 不能禁用最后一个可用超管 → 409
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
-        )
+        ) from exc
     return {"message": "User deactivated"}
 
 
@@ -149,13 +156,10 @@ async def activate_user(
     operator: SuperUser,
     session: DbSession,
 ) -> dict[str, str]:
-    target = await AdminService(session).get_user(user_id)
-    if target is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-        )
-    await AdminService(session).activate_user(target)
+    """激活用户。恢复方向无保护约束，故无 ValueError 分支。"""
+    service = AdminService(session)
+    target = await _get_user_or_404(service, user_id)
+    await service.activate_user(target)
     return {"message": "User activated"}
 
 
@@ -173,18 +177,14 @@ async def delete_user(
     生产环境若用户已产生关联业务数据，建议改走
     deactivate（软删除）而非物理删除，以维持外键完整性。
     """
-    target = await AdminService(session).get_user(user_id)
-    if target is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-        )
+    service = AdminService(session)
+    target = await _get_user_or_404(service, user_id)
     try:
-        await AdminService(session).delete_user(target, operator)
+        await service.delete_user(target, operator)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
-        )
+        ) from exc
     return {"message": "User deleted"}
 
