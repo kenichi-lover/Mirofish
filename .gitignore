@@ -1,0 +1,18 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+pyproject.toml
+uv.lock
+
+# Virtual environments
+.venv
+.env
+
+# This is Agent Package
+.claude/
+.agents/
+tests/
