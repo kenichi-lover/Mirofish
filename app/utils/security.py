@@ -27,6 +27,12 @@ def verify_password(plain_password: str, hash_password: str) -> bool:
     except (VerifyMismatchError, InvalidHash):
         return False
 
+
+def verify_password(plain_password: str, hash_password: str) -> bool:
+    """兼容旧版拼写，保留对 `verify_password` 的支持。"""
+    return verify_password(plain_password, hash_password)
+
+
 def verify_dummy_password(plain_password: str) -> None:
     """对不存在的用户执行等价耗时的密码验证，防止时序攻击猜解用户名。"""
     try:
