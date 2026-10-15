@@ -1,14 +1,16 @@
 """认证服务模块 (Authentication Service)
 
 身份生命周期：注册（register）→ 登录校验（authenticate）。
-管理员后台开户见 admin_service.py，与本模块职责分离。
+用户创建统一复用 AdminService.create_user（唯一创建入口），
+管理员后台开户与本模块共享同一套归一化/哈希/冲突处理逻辑。
 """
 
 from fastapi import HTTPException, status
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from ..models.user import User
-from ..utils.security import DUMMY_HASH, hash_password, verify_password
+from ..utils.security import DUMMY_HASH, verify_password
+from .admin_service import AdminService
 from .user_service import UserService
 
 
@@ -19,27 +21,26 @@ class AuthService:
         self.session = session
 
     async def register(self, username: str, email: str, password: str) -> User:
-        """用户自助注册。用户名/邮箱冲突抛 HTTPException(409)。"""
-        user = User(
-            username=username.strip().lower(),
-            email=email.strip().lower(),
-            hashed_password=hash_password(password),
-            # 注意：不接收 is_superuser 参数，自助注册永远是普通用户
-            is_superuser=False,
+        """用户自助注册。
+
+        复用 AdminService.create_user 作为唯一创建入口，
+        并硬编码 is_superuser=False —— 自助注册永远是普通用户，
+        不存在参数注入提权的可能。
+        用户名/邮箱冲突抛 ValueError（由路由层映射为 409）。
+        """
+        return await AdminService(self.session).create_user(
+            username=username,
+            email=email,
+            password=password,
+            is_superuser=False,  # 硬编码，不透传任何外部参数
         )
-        self.session.add(user)
-        try:
-            await self.session.commit()
-        except IntegrityError as exc:
-            await self.session.rollback()
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Username or email already registered",
-            ) from exc
-        return user
 
     async def authenticate(self, username: str, password: str) -> User:
-        """登录凭据校验：统一哈希比较防时序攻击。"""
+        """登录凭据校验：统一哈希比较防时序攻击。
+
+        登录失败属于协议级认证响应（401/403），故保留 HTTPException；
+        数据冲突类错误则统一抛 ValueError，见各 create/update 方法。
+        """
         user = await UserService(self.session).get_by_username(username)
 
         hashed = user.hashed_password if user else DUMMY_HASH
