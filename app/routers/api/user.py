@@ -19,9 +19,8 @@ from ...dependencies import DbSession
 from ...dependencies.auth import CurrentUser
 from ...models.user import User
 from ...schemas.user_schema import (
-    DeleteAccountRequest,
-    PasswordChangeRequest,
-    UserRead,
+    UserPasswordUpdate,
+    UserPublic,
     UserUpdate,
 )
 from ...services.user_service import UserService
@@ -47,7 +46,7 @@ def _status_for_value_error(exc: ValueError) -> int:
 # ──────────────── 查询 ────────────────
 
 
-@router.get("/me", response_model=UserRead, summary="获取当前用户信息")
+@router.get("/me", response_model=UserPublic, summary="获取当前用户信息")
 async def get_me(
     current_user: CurrentUser,
 ) -> User:
@@ -58,7 +57,7 @@ async def get_me(
 # ──────────────── 资料更新 ────────────────
 
 
-@router.patch("/me", response_model=UserRead, summary="更新个人资料")
+@router.patch("/me", response_model=UserPublic, summary="更新个人资料")
 async def update_me(
     data: UserUpdate,
     current_user: CurrentUser,
@@ -80,7 +79,7 @@ async def update_me(
 
 @router.patch("/me/password", summary="修改密码")
 async def change_password(
-    data: PasswordChangeRequest,
+    data: UserPasswordUpdate,
     response: Response,
     current_user: CurrentUser,
     session: DbSession,
@@ -105,30 +104,4 @@ async def change_password(
     return {"message": "Password updated, please login again"}
 
 
-# ──────────────── 注销账号 ────────────────
-
-
-@router.delete("/me", summary="注销账号")
-async def delete_me(
-    data: DeleteAccountRequest,
-    response: Response,
-    current_user: CurrentUser,
-    session: DbSession,
-) -> dict[str, str]:
-    """注销自己的账号：高危操作，必须验证登录密码确认是本人。
-
-    Service 侧执行软删除（禁用 + PII 匿名化），保留外键完整性；
-    匿名化后凭据与标识均失效，后续请求在认证依赖处自然 401。
-    最后一个可用超管不允许注销自己，返回 409。
-    """
-    try:
-        await UserService(session).delete_account(current_user, data.password)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=_status_for_value_error(exc),
-            detail=str(exc),
-        ) from exc
-
-    clear_auth_cookie(response)
-    return {"message": "Account deleted"}
 

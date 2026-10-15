@@ -19,9 +19,9 @@ from fastapi import APIRouter, HTTPException, Query, status
 from ...dependencies import DbSession, SuperUser
 from ...models.user import User
 from ...schemas.user_schema import (
-    AdminUserCreate,
+    UserCreate,
+    UserPublic,
     AdminUserUpdate,
-    UserRead,
 )
 from ...services.admin_service import AdminService
 
@@ -45,7 +45,7 @@ async def _get_user_or_404(service: AdminService, user_id: int) -> User:
 # ──────────────── 查询 ────────────────
 
 
-@router.get("", response_model=list[UserRead], summary="用户列表（分页）")
+@router.get("", response_model=list[UserPublic], summary="用户列表（分页）")
 async def list_users(
     operator: SuperUser,
     session: DbSession,
@@ -61,7 +61,7 @@ async def list_users(
     return users
 
 
-@router.get("/{user_id}", response_model=UserRead, summary="查询单个用户")
+@router.get("/{user_id}", response_model=UserPublic, summary="查询单个用户")
 async def get_user(
     user_id: int,
     operator: SuperUser,
@@ -75,22 +75,24 @@ async def get_user(
 
 @router.post(
     "",
-    response_model=UserRead,
+    response_model=UserPublic,
     status_code=status.HTTP_201_CREATED,
-    summary="创建用户（可指定超管）",
+    summary="创建用户",
 )
 async def create_user(
-    data: AdminUserCreate,
+    data: UserCreate,
     operator: SuperUser,
     session: DbSession,
 ) -> User:
-    """管理员后台开户。与 /auth/register 的区别：可指定 is_superuser。"""
+    """管理员后台开户。使用 UserCreate，is_superuser 默认 False，
+    如需更高权限，请使用后续的更新接口。
+    """
     try:
         user = await AdminService(session).create_user(
             username=data.username,
             email=data.email,
             password=data.password,
-            is_superuser=data.is_superuser,
+            is_superuser=False,  # 统一默认为普通用户
         )
     except ValueError as exc:
         raise HTTPException(
@@ -103,7 +105,7 @@ async def create_user(
 # ──────────────── 更新 ────────────────
 
 
-@router.patch("/{user_id}", response_model=UserRead, summary="修改任意用户")
+@router.patch("/{user_id}", response_model=UserPublic, summary="修改任意用户")
 async def update_user(
     user_id: int,
     data: AdminUserUpdate,
