@@ -1,0 +1,9 @@
+{% if items %}
+<ul class="result-list">
+  {% for item in items %}
+  <li><a href="{{ item.url }}">{{ item.title }}</a></li>
+  {% endfor %}
+</ul>
+{% else %}
+<p>没有找到与「{{ query }}」相关的内容</p>
+{% endif %}

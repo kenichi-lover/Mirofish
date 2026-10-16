@@ -1,0 +1,44 @@
+<div class="modal-title">{{ '注册' if mode == 'register' else '登录' }}</div>
+
+{% if error %}<div class="form-error">{{ error }}</div>{% endif %}
+
+<form hx-post="{{ '/auth/register' if mode == 'register' else '/auth/login' }}"
+      hx-target="#auth-form-container"
+      hx-swap="innerHTML">
+
+  {% if mode == 'register' %}
+  <div class="form-group">
+    <label for="modal-email">邮箱</label>
+    <input type="email" id="modal-email" name="email" required autocomplete="email"
+           value="{{ email or '' }}">
+  </div>
+  {% endif %}
+
+  <div class="form-group">
+    <label for="modal-username">用户名</label>
+    <input type="text" id="modal-username" name="username" required autocomplete="username"
+           value="{{ username or '' }}">
+  </div>
+
+  <div class="form-group">
+    <label for="modal-password">密码</label>
+    <input type="password" id="modal-password" name="password" required autocomplete="current-password">
+  </div>
+
+  <button type="submit" class="btn-primary">{{ '创建账号' if mode == 'register' else '登录' }}</button>
+</form>
+
+{# 切换入口：一行小字，HTMX 换片段，不刷新、无 JS #}
+<p class="auth-switch">
+  {% if mode == 'register' %}
+    已有账号？<a href="/auth/form/login"
+                hx-get="/auth/form/login"
+                hx-target="#auth-form-container"
+                hx-swap="innerHTML">去登录</a>
+  {% else %}
+    没有账号？<a href="/auth/form/register"
+                hx-get="/auth/form/register"
+                hx-target="#auth-form-container"
+                hx-swap="innerHTML">免费注册</a>
+  {% endif %}
+</p>

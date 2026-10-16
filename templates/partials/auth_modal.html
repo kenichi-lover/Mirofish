@@ -1,0 +1,10 @@
+<dialog id="auth-modal" class="auth-dialog">
+  <div class="modal-panel">
+    <button class="modal-close" aria-label="关闭" formmethod="dialog" formnovalidate>&times;</button>
+
+    {# 表单区域，HTMX 交换目标 #}
+    <div id="auth-form-container">
+      {% with mode = "login" %}{% include "partials/auth_form.html" %}{% endwith %}
+    </div>
+  </div>
+</dialog>
